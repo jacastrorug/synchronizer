@@ -1,0 +1,21 @@
+{
+  "name": "synchronizer",
+  "version": "1.0.0",
+  "description": "This is a syncronizer to mantain the data of the store up to date",
+  "main": "index.js",
+  "scripts": {
+    "start": "npx tsc && node dist/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "@jacastrorug",
+  "license": "ISC",
+  "dependencies": {
+    "@types/mssql": "^7.1.5",
+    "@types/mysql": "^2.15.21",
+    "dotenv": "^16.0.0",
+    "mssql": "^8.0.2",
+    "mysql": "^2.18.1",
+    "mysql2": "^2.3.3",
+    "typescript": "^4.6.2"
+  }
+}
