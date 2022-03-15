@@ -1,4 +1,4 @@
-export class AccessoriesDNS {
+export class AccessoryDNS {
     bodega: number;
     desBodega: string;
     codigo: string;

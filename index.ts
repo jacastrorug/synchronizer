@@ -2,7 +2,8 @@ import "dotenv/config";
 import { connect, query, config } from "mssql";
 import * as MySQL from "mysql2";
 
-import { AccessoriesDNS } from "./models/AccessoriesDNS";
+import { AccesoryStock } from "./models/AccesoryStock";
+import { AccessoryDNS } from "./models/AccessoryDNS";
 
 
 const sqlDnsConfig: config = {
@@ -19,32 +20,15 @@ const sqlStockConfig: MySQL.ConnectionOptions = {
     host: process.env.DB_STOCK_SERVER,
     user: process.env.DB_STOCK_USER,
     password: process.env.DB_STOCK_PASSWORD,
-    database: process.env.DB_STOCK_NAME,
     port: 3306
 };
 
 const main = async () => {
     try {
-
-        const conexion2 = MySQL.createPool({
-            host: process.env.DB_STOCK_SERVER,
-            user: process.env.DB_STOCK_USER,
-            password: process.env.DB_STOCK_PASSWORD,
-            database: process.env.DB_STOCK_NAME,
-        });
-
-        const response = conexion2.query(`SELECT 1 + 1 AS solution;`, [], (error, results) => {
-            console.log(error, results);
-        });
-
-        // await synchronizeAccessories([], conexion2);
-        
-        const conexion = MySQL.createConnection(sqlStockConfig);
-        conexion.connect();
-
         await connect(sqlDnsConfig);
+        
         const accessories = await getAccesoriesFromDNS();
-        //await synchronizeAccessories(accessories, conexion2);
+        await synchronizeAccessories(accessories);
 
     } catch (error) {
         console.error(`The process can't be completed ${error}`);
@@ -53,11 +37,11 @@ const main = async () => {
     process.exit(0);
 }
 
-const getAccesoriesFromDNS = async (): Promise<AccessoriesDNS[]> => {
+const getAccesoriesFromDNS = async (): Promise<AccessoryDNS[]> => {
     const result = await query(`SELECT * FROM MAZKO.dbo.v_accesorios_stock;`);
     const data = result.recordset;
 
-    const accessoriesKey: { [key: string]: AccessoriesDNS } = {};
+    const accessoriesKey: { [key: string]: AccessoryDNS } = {};
 
     data.map((item) => {
         const codigo = item.codigo;
@@ -92,22 +76,31 @@ const parseAccesoryCode = (codigo: string): string => {
     return codigo.split("-DSI")[0];
 };
 
-const synchronizeAccessories = async (accessories: AccessoriesDNS[], conexion: MySQL.Connection) => {
-    const response = conexion.query(`SELECT 1 + 1 AS solution;`, [], (error, results) => {
-        console.log(error, results);
+const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
+    console.log(`Syncronizing accesories, quantity: ${accessories.length}`);
+
+    const conexion = MySQL.createConnection({
+        host: process.env.DB_STOCK_SERVER,
+        user: process.env.DB_STOCK_USER,
+        password: process.env.DB_STOCK_PASSWORD,
+        database: process.env.DB_STOCK_NAME,
     });
 
     for (let accessory of accessories) {
         try {
             console.log(`Processing the accessory: ${accessory.descripcion} - ${accessory.codigoStock}`);
 
-            const response = conexion.query(`SELECT 1 + 1 AS solution;`, [], (error, results) => {
-                console.log(error, results);
-            });
+            const [result] = await conexion.promise().query(`SELECT product_id, sku, stock_quantity FROM load_mazko.wp_wc_product_meta_lookup WHERE sku = ?`, [accessory.codigoStock]);
+            if(!result[0])
+                throw new Error(`Item not found in store database.`);
+            
+            const item: AccesoryStock = result[0];
+            console.log(`Current stock: ${item.stock_quantity} -> new stock: ${accessory.stock}`);
+            
+            await conexion.promise().query(`UPDATE load_mazko.wp_wc_product_meta_lookup SET stock_quantity = ? WHERE sku = ?`, [accessory.stock, accessory.codigoStock]);
 
-            break;
         } catch (error) {
-            console.error(`The accessory: ${accessory.descripcion} - ${accessory.codigoStock} can't be updated: ${error}`);
+            console.warn(`The accessory: ${accessory.descripcion} - ${accessory.codigoStock} can't be updated: ${error}`);
         }
     }
 
