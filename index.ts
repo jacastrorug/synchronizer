@@ -1,44 +1,21 @@
 import "dotenv/config";
-import { connect, query, config } from "mssql";
-import * as MySQL from "mysql2";
-
+import { ConnectionPool } from "mssql";
 import { AccesoryStock } from "./models/AccesoryStock";
 import { AccessoryDNS } from "./models/AccessoryDNS";
 import { MaintenanceDNS } from "./models/MantenanceDNS";
+import { getDNSConnection, getLoadDBName, getLoadSSHConnection, getStoreDBName, getStoreSSHConnection } from "./utils";
 
 
-const sqlDnsConfig: config = {
-    user: process.env.DB_DNS_USER,
-    password: process.env.DB_DNS_PASSWORD,
-    server: process.env.DB_DNS_SERVER,
-    options: {
-        encrypt: false,
-        trustServerCertificate: true
-    }
-};
-
-const sqlStockConfig: MySQL.ConnectionOptions = {
-    host: process.env.DB_STOCK_SERVER,
-    user: process.env.DB_STOCK_USER,
-    password: process.env.DB_STOCK_PASSWORD,
-    database: process.env.DB_STOCK_NAME,
-};
-
-const sqlStoreConfig: MySQL.ConnectionOptions = {
-    host: process.env.DB_STORE_SERVER,
-    user: process.env.DB_STORE_USER,
-    password: process.env.DB_STORE_PASSWORD,
-    database: process.env.DB_STORE_NAME,
-};
-
-const main = async (event: any, context: any) => {
+const main = async () => {
     try {
-        await connect(sqlDnsConfig);
+        console.log(`Starting syncronization in mode: ${process.env.SYNC_ENV} ✨`);
 
-        const accessories = await getAccesoriesFromDNS();
+        const DNSConnection = await getDNSConnection();
+
+        const accessories = await getAccesoriesFromDNS(DNSConnection);
         await synchronizeAccessories(accessories);
 
-        const maintenances = await getMaintenancesFromDNS();
+        const maintenances = await getMaintenancesFromDNS(DNSConnection);
         await synchronizeMaintenances(maintenances);
 
     } catch (error) {
@@ -48,8 +25,8 @@ const main = async (event: any, context: any) => {
     process.exit(0);
 }
 
-const getAccesoriesFromDNS = async (): Promise<AccessoryDNS[]> => {
-    const result = await query(`SELECT * FROM MAZKO.dbo.v_accesorios_stock;`);
+const getAccesoriesFromDNS = async (DNSConnection: ConnectionPool): Promise<AccessoryDNS[]> => {
+    const result = await DNSConnection.query(`SELECT * FROM MAZKO.dbo.v_accesorios_stock`);
     const data = result.recordset;
 
     const accessoriesKey: { [key: string]: AccessoryDNS } = {};
@@ -89,20 +66,23 @@ const parseAccesoryCode = (codigo: string): string => {
 
 const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
     console.log(`Syncronizing accesories, quantity: ${accessories.length}`);
-    const conexion = MySQL.createConnection(sqlStockConfig);
+    const conexion = await getLoadSSHConnection();
+    const loadDBName = getLoadDBName();
 
     for (let accessory of accessories) {
         try {
             console.log(`Processing the accessory: ${accessory.descripcion} - ${accessory.codigoStock}`);
 
-            const [result] = await conexion.promise().query(`SELECT product_id, sku, stock_quantity FROM load_mazko.wp_wc_product_meta_lookup WHERE sku = ?`, [accessory.codigoStock]);
+            const [result] = await conexion.promise().query(`SELECT product_id, sku, stock_quantity, min_price, max_price FROM ${loadDBName}.wp_wc_product_meta_lookup WHERE sku = ?`, [accessory.codigoStock]);
             if (!result[0])
                 throw new Error(`Item not found in store database.`);
 
             const item: AccesoryStock = result[0];
             console.log(`Current stock: ${item.stock_quantity} -> new stock: ${accessory.stock}`);
+            console.log(`Current min price: ${item.min_price} -> new min price: ${accessory.valorConIva}`);
+            console.log(`Current max price: ${item.max_price} -> new max price: ${accessory.valorConIva}`);
 
-            await conexion.promise().query(`UPDATE load_mazko.wp_wc_product_meta_lookup SET stock_quantity = ? WHERE sku = ?`, [accessory.stock, accessory.codigoStock]);
+            await conexion.promise().query(`UPDATE ${loadDBName}.wp_wc_product_meta_lookup SET stock_quantity = ?, min_price = ?, max_price = ? WHERE sku = ?`, [accessory.stock, accessory.valorConIva, accessory.valorConIva, accessory.codigoStock]);
 
         } catch (error) {
             console.info(`The accessory: ${accessory.descripcion} - ${accessory.codigoStock} can't be updated: ${error}`);
@@ -112,8 +92,8 @@ const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
     conexion.end();
 };
 
-const getMaintenancesFromDNS = async (): Promise<MaintenanceDNS[]> => {
-    const result = await query(`SELECT * FROM MAZKO.dbo.v_tall_crmv_planes_mantenimiento;`)
+const getMaintenancesFromDNS = async (DNSConnection: ConnectionPool): Promise<MaintenanceDNS[]> => {
+    const result = await DNSConnection.query(`SELECT * FROM MAZKO.dbo.v_tall_crmv_planes_mantenimiento`)
     const data = result.recordset;
 
     const maintenances: MaintenanceDNS[] = data.map((item) => {
@@ -135,20 +115,21 @@ const getMaintenancesFromDNS = async (): Promise<MaintenanceDNS[]> => {
 
 const synchronizeMaintenances = async (maintenances: MaintenanceDNS[]) => {
     console.log(`Syncronizing maintenances, quantity: ${maintenances.length}`);
-    const conexion = MySQL.createConnection(sqlStoreConfig);
+    const conexion = await getStoreSSHConnection();
+    const storeDBName = getStoreDBName();
 
     for (let maintenance of maintenances) {
         try {
             console.log(`Processing the maintenance: ${maintenance.descripcion} - ${maintenance.id}`);
-            const [result] = await conexion.promise().query(`SELECT id_dns, id, descripcion FROM store_mazko.mantenimiento WHERE id_dns = ?`, [maintenance.id]);
+            const [result] = await conexion.promise().query(`SELECT id_dns, id, descripcion FROM ${storeDBName}.mantenimiento WHERE id_dns = ?`, [maintenance.id]);
 
             if (result[0]) {
-                const queryString = `UPDATE store_mazko.mantenimiento SET modelo = ?, ano = ?, descripcion = ?, kilometraje = ?, operacion = ?, precio = ? WHERE id_dns = ?`;
+                const queryString = `UPDATE ${storeDBName}.mantenimiento SET modelo = ?, ano = ?, descripcion = ?, kilometraje = ?, operacion = ?, precio = ? WHERE id_dns = ?`;
                 const values = [maintenance.modelo, maintenance.ano, maintenance.descripcion, maintenance.kilometraje, maintenance.notas, maintenance.precio, maintenance.id];
 
                 await conexion.promise().query(queryString, values);
             } else {
-                const queryString = `INSERT INTO store_mazko.mantenimiento (modelo, ano, descripcion, kilometraje, operacion, precio, id_dns) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+                const queryString = `INSERT INTO ${storeDBName}.mantenimiento (modelo, ano, descripcion, kilometraje, operacion, precio, id_dns) VALUES (?, ?, ?, ?, ?, ?, ?)`;
                 const values = [maintenance.modelo, maintenance.ano, maintenance.descripcion, maintenance.kilometraje, maintenance.notas, maintenance.precio, maintenance.id];
 
                 await conexion.promise().query(queryString, values);
@@ -162,4 +143,4 @@ const synchronizeMaintenances = async (maintenances: MaintenanceDNS[]) => {
 
 };
 
-main(null, null);
+main();

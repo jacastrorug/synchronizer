@@ -2,7 +2,7 @@ import * as SSH2 from "ssh2";
 import * as MySQL from "mysql2";
 import { ForwardConfig } from "../models/ForwardConfig";
 
-export const SSHConnection = (configSSHConnection: SSH2.ConnectConfig, dbConfig: MySQL.ConnectionOptions, forwardConfig: ForwardConfig) => {
+export const SSHConnection = (configSSHConnection: SSH2.ConnectConfig, dbConfig: MySQL.ConnectionOptions, forwardConfig: ForwardConfig): Promise<MySQL.Connection> => {
     const sshClient = new SSH2.Client();
 
     return new Promise((resolve, reject) => {
@@ -29,7 +29,8 @@ export const SSHConnection = (configSSHConnection: SSH2.ConnectConfig, dbConfig:
                         if(err) {
                             reject(err)
                         }
-    
+
+                        console.log('ssh db connecton success ✅');
                         resolve(connection);
                     });
         
