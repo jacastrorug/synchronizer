@@ -6,7 +6,7 @@
   "scripts": {
     "build": "npx tsc",
     "start": "npx tsc && node dist/index.js",
-    "start-audit": "npx tsc && node dist/index.js >> log.txt",
+    "start-audit": "npx tsc && node dist/index.js > log.txt",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "@jacastrorug",
