@@ -9,14 +9,15 @@ import { getDNSConnection, getLoadDBName, getLoadSSHConnection, getStoreDBName, 
 const main = async () => {
     try {
         console.log(`Starting syncronization in mode: ${process.env.SYNC_ENV} ✨`);
+        console.log(`Date: ${new Date()}`);
 
         const DNSConnection = await getDNSConnection();
 
         const accessories = await getAccesoriesFromDNS(DNSConnection);
         await synchronizeAccessories(accessories);
 
-        const maintenances = await getMaintenancesFromDNS(DNSConnection);
-        await synchronizeMaintenances(maintenances);
+        //const maintenances = await getMaintenancesFromDNS(DNSConnection);
+        //await synchronizeMaintenances(maintenances);
 
     } catch (error) {
         console.error(`The process can't be completed ${error}`);
