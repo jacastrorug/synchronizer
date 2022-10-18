@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { ConnectionPool } from "mssql";
+import * as MySQL from "mysql2";
 import { AccesoryStock } from "./models/AccesoryStock";
 import { AccessoryDNS } from "./models/AccessoryDNS";
 import { MaintenanceDNS } from "./models/MantenanceDNS";
@@ -66,9 +67,11 @@ const parseAccesoryCode = (codigo: string): string => {
 };
 
 const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
-    console.log(`Syncronizing accesories, quantity: ${accessories.length}`);
+    console.log(`Syncronizing accessories, quantity: ${accessories.length}`);
     const conexion = await getLoadSSHConnection();
     const loadDBName = getLoadDBName();
+
+    await cleanStockAccessories(conexion);
 
     for (let accessory of accessories) {
         try {
@@ -77,11 +80,11 @@ const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
             const [result] = await conexion.promise().query(`SELECT product_id, sku, stock_quantity, min_price, max_price FROM ${loadDBName}.wp_wc_product_meta_lookup WHERE sku = ?`, [accessory.codigoStock]);
             if (!result[0])
                 throw new Error(`Item not found in store database: ${accessory.codigoStock}.`);
-            
+
             const [postMetaWP] = await conexion.promise().query(`SELECT * FROM ${loadDBName}.wp_postmeta WHERE meta_key = ? AND meta_value = ?`, ['_sku', accessory.codigoStock]);
-            if(!postMetaWP[0])
+            if (!postMetaWP[0])
                 throw new Error(`Item not found in wp_postmeta: ${accessory.codigoStock}.`);
-            
+
             console.log(`✅ Updating wp_wc_product_meta_lookup:`)
 
             const item: AccesoryStock = result[0];
@@ -96,7 +99,7 @@ const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
 
             const [resultPostMetas] = await conexion.promise().query(`SELECT * FROM ${loadDBName}.wp_postmeta WHERE post_id = ? AND meta_key IN (?, ?, ?, ?, ?)`, [postMeta.post_id, '_sku', '_stock', '_regular_price', '_price', '_manage_stock']);
             const postMetasWP = resultPostMetas as PostMetaWP[];
-            for(let idx = 0; idx < postMetasWP.length; idx++) {
+            for (let idx = 0; idx < postMetasWP.length; idx++) {
                 console.log(`Meta key: ${postMetasWP[idx].meta_key} - Meta Value: ${postMetasWP[idx].meta_value}`);
             }
 
@@ -111,6 +114,27 @@ const synchronizeAccessories = async (accessories: AccessoryDNS[]) => {
     }
 
     conexion.end();
+};
+
+const cleanStockAccessories = async (conexion: MySQL.Connection) => {
+    console.log(`Cleaning stock accessories...`);
+
+    const loadDBName = getLoadDBName();
+    const [result] = await conexion.promise().query(`SELECT product_id, sku, stock_quantity, min_price, max_price FROM ${loadDBName}.wp_wc_product_meta_lookup WHERE sku != '';`);
+    const accessories = result as AccesoryStock[];
+
+    for (let accessory of accessories) {
+        const [postMetaWP] = await conexion.promise().query(`SELECT * FROM ${loadDBName}.wp_postmeta WHERE meta_key = ? AND meta_value = ?`, ['_sku', accessory.sku]);
+        const postMeta: PostMetaWP = postMetaWP[0];
+
+        if(!postMeta) continue;
+        
+        await conexion.promise().query(`UPDATE ${loadDBName}.wp_postmeta SET meta_value = ? WHERE meta_key = ? AND post_id = ?`, [0, '_stock', postMeta.post_id]);
+    }
+
+    await conexion.promise().query(`UPDATE ${loadDBName}.wp_wc_product_meta_lookup SET stock_quantity = ?`, [0]);
+    
+    console.log(`Accessories cleaned, every accessory has stock in 0`);
 };
 
 const getMaintenancesFromDNS = async (DNSConnection: ConnectionPool): Promise<MaintenanceDNS[]> => {

@@ -9,34 +9,34 @@ export const SSHConnection = (configSSHConnection: SSH2.ConnectConfig, dbConfig:
 
         sshClient.on('ready', () => {
             console.log('ssh connected ✅');
-        
-            sshClient.forwardOut(forwardConfig.srcHost, 
-                forwardConfig.srcPort, 
-                forwardConfig.dstHost, 
+
+            sshClient.forwardOut(forwardConfig.srcHost,
+                forwardConfig.srcPort,
+                forwardConfig.dstHost,
                 forwardConfig.dstPort,
                 async (err, stream) => {
-                    if(err) {
+                    if (err) {
                         reject(err);
                     }
-    
+
                     const updatedDBServer: MySQL.ConnectionOptions = {
                         ...dbConfig,
                         stream: stream
                     };
-        
+
                     const connection = MySQL.createConnection(updatedDBServer);
                     connection.connect((err) => {
-                        if(err) {
+                        if (err) {
                             reject(err)
                         }
 
-                        console.log('ssh db connecton success ✅');
+                        console.log('ssh db connection success ✅');
                         resolve(connection);
                     });
-        
+
                 });
-        
-        
+
+
         }).connect(configSSHConnection);
 
     });

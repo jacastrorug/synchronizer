@@ -45,9 +45,9 @@ export const getStoreSSHConnection = async (): Promise<MySQL.Connection> => {
 
     try {
         const sshConnection: MySQL.Connection = await SSHConnection(configSSHConnection, dbConfig, forwardConfig);
-    
+
         return sshConnection;
-    }catch (error){
+    } catch (error) {
         console.error(error);
         throw new Error('The SSH connection to the STORE fail ❌, please review connection config.');
     }
@@ -92,11 +92,11 @@ export const getLoadSSHConnection = async (): Promise<MySQL.Connection> => {
 
     try {
         const sshConnection: MySQL.Connection = await SSHConnection(configSSHConnection, dbConfig, forwardConfig);
-    
+
         return sshConnection;
-    }catch (error){
+    } catch (error) {
         console.error(error);
-        throw new Error('The SSH connection to the LOAD fail ❌, please review connection config.');
+        throw Error('The SSH connection to the LOAD fail ❌, please review connection config.');
     }
 
 };
@@ -113,13 +113,13 @@ export const getDNSConnection = async (): Promise<MSSQL.ConnectionPool> => {
         }
     };
 
-    
+
     return MSSQL.connect(sqlDnsConfig);
 };
 
 export const getLoadDBName = (): string => {
 
-    if(process.env.SYNC_ENV !== Environment.PROD) {
+    if (process.env.SYNC_ENV !== Environment.PROD) {
         return process.env.DB_STOCK_NAME;
     }
 
@@ -128,7 +128,7 @@ export const getLoadDBName = (): string => {
 
 export const getStoreDBName = (): string => {
 
-    if(process.env.SYNC_ENV !== Environment.PROD) {
+    if (process.env.SYNC_ENV !== Environment.PROD) {
         return process.env.DB_STORE_NAME;
     }
 
