@@ -20,6 +20,7 @@ const main = async () => {
         //const maintenances = await getMaintenancesFromDNS(DNSConnection);
         //await synchronizeMaintenances(maintenances);
 
+        console.log(`Done ✅`)
     } catch (error) {
         console.error(`The process can't be completed ${error}`);
     }
